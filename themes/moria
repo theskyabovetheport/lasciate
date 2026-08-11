@@ -1,0 +1,84 @@
+# lasciate theme -- moria
+#
+# The Doors of Durin: ithildin tracery, silver-white on black stone, with
+# carved strokes for keystroke feedback.
+#
+# A theme is a shell fragment, sourced by the wrapper. Copy it to
+# ~/.config/lasciate/themes/moria and yours is used instead of this one;
+# `LASCIATE_THEME=/path/to/file` reads one from anywhere.
+#
+# What a theme leaves unset, the shim answers for. Two variables are not a
+# theme's business: LASCIATE_SHIM, which is a path, and LASCIATE_PROCESSING_SRC,
+# which tracks a literal inside xsecurelock.
+
+# ---------------------------------------------------------------------- text
+
+# "Speak, friend, and enter" -- the Sindarin of the inscription on the Doors,
+# in Latin letters. The tengwar of the door itself are a private-use mapping
+# that only one or two fonts anywhere carry.
+LASCIATE_PROMPT="Pedo mellon a minno"
+
+# "The orcs are coming" -- what the last page of the Book of Mazarbul says, in
+# the language the rest of this screen is in. Replaces the line above once an
+# unlock has failed: coming back to it means somebody tried while you were
+# away. `yrch` is Legolas's word in the text; the verb is reconstructed, as all
+# Sindarin conjugation outside Tolkien's own examples is.
+LASCIATE_PROMPT_FAILED="Tolar in yrch"
+
+# Shown while PAM decides -- Gandalf at the doors, "listen to the word of my
+# tongue". Narrower than either line above, so the shim pads it out to
+# whichever is showing; a status *wider* than the prompt would repaint a strip
+# and leave the prompt's ends on screen.
+LASCIATE_PROCESSING="Lasto beth lammen"
+
+# -------------------------------------------------------------------- glyphs
+
+# The elder futhark, from a face that also draws the line above them. Cirth are
+# not in Unicode; these are the runes it does have, and they are what the Book
+# of Mazarbul is written in as far as any font here is concerned.
+#
+# Check your font covers them: `make check THEME=moria`.
+LASCIATE_BASES="ᚠᚢᚦᚨᚱᚲᚷᚹᚺᚾᛁᛃᛇᛈᛉᛊᛏᛒᛖᛗᛚᛜᛞᛟ"
+
+# A single space is "no mark". Runes carry none.
+LASCIATE_MARKS=" "
+
+# Fixed regardless of input, so the feedback cannot hint at how much has been
+# typed.
+LASCIATE_GLYPHS=12
+
+# -------------------------------------------------------------------- colour
+
+# One face draws the whole dialog, so it has to carry both the Sindarin above
+# and the runes below it. Of the faces that do, this one draws every rune at
+# the same advance, which is what a twelve-glyph run redrawn on each keystroke
+# needs: auth_x11 clears only the extents of what it is about to draw, so a run
+# narrower than the last would leave that one's ends on screen.
+#
+# Coverage is not enough on its own -- a face can carry a codepoint and draw it
+# as a placeholder box with the character inside, which fontconfig reports as
+# present. Look at a rune before adopting a face.
+#
+# The tengwar of the real inscription are not an option at any font: they are
+# built on stacked tehtar, and auth_x11 links no shaping engine, so the vowel
+# marks would land on top of each other rather than over their consonants.
+XSECURELOCK_FONT="FreeMono"
+
+# Stone rather than a void: the screen behind is a cold near-black, and the
+# panel the dialog draws on is a shade lighter, so the text sits on something
+# lit rather than floating. Both stay dark enough that a lock screen still
+# reads as one, and pale text on either keeps its contrast.
+XSECURELOCK_BACKGROUND_COLOR="#0a0f14"
+XSECURELOCK_AUTH_BACKGROUND_COLOR="#121a23"
+
+# Ithildin, which shows by moonlight and starlight: a cold cyan rather than a
+# plain white, on the stone above.
+XSECURELOCK_AUTH_FOREGROUND_COLOR="#00e5ff"
+
+# Amber, not a second cold colour: against cyan a failed unlock has to differ
+# in hue to register at all.
+XSECURELOCK_AUTH_WARNING_COLOR="#ffb703"
+
+# time_hex is what the glyph substitution reads. Any other mode leaves the
+# glyphs inert, since the shim only rewrites strings shaped like its output.
+XSECURELOCK_PASSWORD_PROMPT="time_hex"

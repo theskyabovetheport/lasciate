@@ -1,0 +1,64 @@
+# lasciate theme -- matrix
+#
+# Phosphor cyan on black, half-width katakana in place of the hex clock.
+#
+# A theme is a shell fragment, sourced by the wrapper. Copy it to
+# ~/.config/lasciate/themes/matrix and yours is used instead of this one;
+# `LASCIATE_THEME=/path/to/file` reads one from anywhere.
+#
+# What a theme leaves unset, the shim answers for. Two variables are not a
+# theme's business: LASCIATE_SHIM, which is a path, and LASCIATE_PROCESSING_SRC,
+# which tracks a literal inside xsecurelock.
+
+# ---------------------------------------------------------------------- text
+
+LASCIATE_PROMPT="Wake up, Neo..."
+
+# Replaces the line above once somebody has failed. Coming back to it means
+# they tried while you were away.
+LASCIATE_PROMPT_FAILED="The Matrix has you"
+
+# Shown while PAM decides. Narrower than either line above, so the shim pads
+# it out to whichever is showing; a status *wider* than the prompt would
+# repaint a strip and leave the prompt's ends on screen.
+LASCIATE_PROCESSING="TRACING"
+
+# -------------------------------------------------------------------- glyphs
+
+# Half-width katakana (U+FF66-U+FF9D), not the full-width forms: these advance
+# one column, like the digits beside them, and the shim pads the status line in
+# characters on the assumption that every glyph is one column wide.
+#
+# Check your font covers them: `make check THEME=matrix`.
+LASCIATE_BASES="ｦｧｨｩｪｫｬｭｮｯｰｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789"
+
+# A single space is "no mark". Rain carries no diacritics.
+LASCIATE_MARKS=" "
+
+# Fixed regardless of input, so the feedback cannot hint at how much has been
+# typed.
+LASCIATE_GLYPHS=12
+
+# -------------------------------------------------------------------- colour
+
+# `monospace` alone is the wrong ask: on most systems it resolves to a Latin
+# face with no katakana, and the glyphs then arrive from a fallback at another
+# width -- the one failure this set is prone to. What auth_x11 hands to
+# XftFontOpenName is a fontconfig pattern, so it can carry the requirement
+# itself and let fontconfig pick whatever satisfies it on this machine.
+XSECURELOCK_FONT="monospace:lang=ja"
+
+XSECURELOCK_BACKGROUND_COLOR="#000000"
+XSECURELOCK_AUTH_BACKGROUND_COLOR="#000000"
+
+# The film's phosphor green, bright enough to hold at the size an auth dialog
+# draws its one line.
+XSECURELOCK_AUTH_FOREGROUND_COLOR="#00ff41"
+
+# Amber, not a second green: against green-on-black a failed unlock has to
+# differ in hue to register at all.
+XSECURELOCK_AUTH_WARNING_COLOR="#ffb703"
+
+# time_hex is what the glyph substitution reads. Any other mode leaves the
+# glyphs inert, since the shim only rewrites strings shaped like its output.
+XSECURELOCK_PASSWORD_PROMPT="time_hex"

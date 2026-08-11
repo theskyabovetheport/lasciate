@@ -1,0 +1,59 @@
+# lasciate theme -- inferno
+#
+# The inscription over the gate of Hell, in red on black, with geometric
+# glyphs for keystroke feedback.
+#
+# A theme is a shell fragment, sourced by the wrapper. Copy it to
+# ~/.config/lasciate/themes/inferno and yours is used instead of this one;
+# `LASCIATE_THEME=/path/to/file` reads one from anywhere.
+#
+# What a theme leaves unset, the shim answers for. Two variables are not a
+# theme's business: LASCIATE_SHIM, which is a path, and LASCIATE_PROCESSING_SRC,
+# which tracks a literal inside xsecurelock.
+
+# ---------------------------------------------------------------------- text
+
+# Lasciate ogne speranza, voi ch'intrate -- in the Latin the Roman inscription
+# would have used, where V does duty for U and there is no lower case.
+LASCIATE_PROMPT="RELINQVITE·OMNEM·SPEM·VOS·QVI·INTRATIS"
+
+# temptatum est -- "it has been attempted". Replaces the line above once
+# somebody has failed.
+LASCIATE_PROMPT_FAILED="TEMPTATVM·EST"
+
+# Shown while PAM decides. Narrower than either line above, so the shim pads
+# it out to whichever is showing; a status *wider* than the prompt would
+# repaint a strip and leave the prompt's ends on screen.
+LASCIATE_PROCESSING="EVOCATIO"
+
+# -------------------------------------------------------------------- glyphs
+
+# Keystroke feedback is drawn from these. Check your font covers them:
+# `make check THEME=inferno`.
+LASCIATE_BASES="◆●▲▼■◇○▓█"
+
+# A single space is "no mark". Marks are off, and cannot be otherwise:
+# auth_x11 links no shaping engine, so a combining mark is not placed over the
+# glyph before it -- it takes a cell of its own. A run would then be as wide as
+# the marks the hash happened to pick, and auth_x11 clears only the extents of
+# what it draws, so a narrower run leaves the last one's ends on screen.
+LASCIATE_MARKS=" "
+
+# Fixed regardless of input, so the feedback cannot hint at how much has been
+# typed.
+LASCIATE_GLYPHS=12
+
+# -------------------------------------------------------------------- colour
+
+XSECURELOCK_FONT="monospace"
+XSECURELOCK_BACKGROUND_COLOR="#000000"
+XSECURELOCK_AUTH_BACKGROUND_COLOR="#000000"
+XSECURELOCK_AUTH_FOREGROUND_COLOR="#d62828"
+
+# Not another red: against red-on-black a failed unlock has to differ in hue
+# to register at all.
+XSECURELOCK_AUTH_WARNING_COLOR="#ffb703"
+
+# time_hex is what the glyph substitution reads. Any other mode leaves the
+# glyphs inert, since the shim only rewrites strings shaped like its output.
+XSECURELOCK_PASSWORD_PROMPT="time_hex"

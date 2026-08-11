@@ -1,0 +1,330 @@
+#!/bin/sh
+# lasciate -- xsecurelock, stripped to one line of text.
+#
+# Drop-in replacement for calling xsecurelock directly. Point your locker at
+# it: `xss-lock --transfer-sleep-lock -- lasciate`, and whatever key binding
+# your WM uses to lock.
+#
+# The look comes from a theme file. LASCIATE_THEME names one; see themes/.
+
+set -eu
+
+# `#!/bin/sh` is bash on Arch, Fedora, RHEL and openSUSE, and bash in its
+# default mode looks up functions before special builtins -- so a theme could
+# define `exec`, `unset` or `:` as a function and take over the failsafe below,
+# which is written the way it is precisely to be out of a theme's reach. POSIX
+# mode restores the ordering, and goes further: it makes those names invalid as
+# function names, so such a theme is a parse error rather than a hijack. dash,
+# which is /bin/sh here, already behaves this way and does not know the option.
+if [ -n "${BASH_VERSION:-}" ]; then
+    set -o posix
+fi
+
+# Everything this script does between here and the exec at the bottom is
+# cosmetic, and none of it is worth a screen that stays unlocked. Two habits
+# enforce that, because the comments further down asking for it were not
+# enough: `-e` is off for the whole of the middle (see below), and anything
+# that ends the script early lands here instead of on the desktop.
+#
+# The trap catches what `-e` cannot. A theme that calls `exit`, a readonly
+# variable, a failed expansion -- each of those ends the script with the screen
+# up. `exec` in a theme is the one thing outside it: that replaces this
+# process outright, taking the trap with it.
+#
+# The body is written out here rather than kept in a function. The theme below
+# is sourced into this shell, so it can define a function of any name this
+# script has defined and take it over -- and disarming the one thing standing
+# between a mistake and an unlocked screen is not something a preferences file
+# should be able to do by accident. Written out, it is out of reach.
+#
+# EXIT only, deliberately. A signal means something outside asked this process
+# to stop -- and xss-lock kills the locker to force an unlock -- so INT, TERM
+# and HUP keep their default of ending the script. Locking in response to being
+# told to go away would turn a cancelled lock into a lock.
+#
+# Four statements, and nothing may be added that can fail: one fork, no
+# external commands, no branch.
+#
+# `set +e` first, and it is a special builtin so a theme cannot replace it.
+# Without it a non-zero status anywhere below aborts the one path whose whole
+# job is not to abort.
+#
+# The message goes in a subshell, so that a theme which has replaced `echo`
+# with something that exits cannot take the failsafe with it -- a function's
+# `exit` ends the subshell and nothing else. The subshell carries no
+# redirection: one would apply to the whole of it and swallow the stderr
+# written inside. No `logger` either -- it returns non-zero on a host with no
+# syslog socket and blocks when the socket's buffer is full, and stderr reaches
+# the journal on its own under systemd.
+#
+# `unset LD_PRELOAD` because a preload that cannot load kills whatever is
+# exec'd next exactly as dead as it kills the locker, and this path can be
+# reached before the probe below has run. It ends the shell if the variable was
+# made readonly -- `unset` is a special builtin and no redirection changes that
+# -- which only a theme you alone can write can do, and is a stated limit
+# rather than something defended against with a second fork.
+#
+# `exec` does not consult functions for the command name, so `xsecurelock`
+# cannot be pointed elsewhere by a definition in a theme.
+trap 'trap - EXIT; set +e
+      ( echo "lasciate: wrapper ended early -- locking anyway, unthemed" >&2 )
+      unset LD_PRELOAD 2>/dev/null
+      exec xsecurelock "$@"' EXIT
+
+# Said in every place there is to say it. A message about a screen that is not
+# locked is worth nothing on a stderr the person has walked away from, so it
+# goes to the journal too. Kept on one line: `logger` records it as one.
+#
+# Nothing here may delay the lock, and both graphical channels will if you let
+# them: `notify-send` blocks on a D-Bus call for its 25-second default when no
+# notification daemon is listening -- i3 without dunst, which is this project's
+# own target -- and `xmessage -timeout 30` blocks for thirty seconds unless
+# somebody clicks it. Backgrounded, both are free. The cost of backgrounding is
+# that a window raised as the lock goes up is invisible behind it and only
+# noticed on the way out, so `graphical` is passed only by the one caller with
+# no lock coming, where there is a desktop to show it on and a person in front
+# of it.
+#
+# Defined before the theme for want of anywhere better -- it is only ever
+# called on paths that have already gone wrong, and a theme that redefines it
+# has redefined its own warning.
+alarm() {
+    echo "lasciate: $1" >&2
+    logger -p user.crit -t lasciate -- "$1" 2>/dev/null || true
+    if [ "${2:-}" = graphical ]; then
+        command -v notify-send >/dev/null 2>&1 &&
+            notify-send -u critical "lasciate" "$1" 2>/dev/null &
+        command -v xmessage >/dev/null 2>&1 &&
+            xmessage -center -timeout 30 "lasciate: $1" 2>/dev/null &
+    fi
+    return 0
+}
+
+# `${HOME:-}` and not `$HOME`, here and in the shim search below. Under -u a
+# bare unset HOME ends the script, and both of these only build a path to
+# something optional -- preferences, and a shim that has a second candidate.
+# An empty HOME yields a path that will not be readable, which is already the
+# case these lines handle. Nothing about locking depends on either.
+# ------------------------------------------------------------------- themes
+#
+# A theme is a shell fragment, sourced. LASCIATE_THEME names one, and a name
+# with a `/` in it is a path used as given. Otherwise it is looked for in these directories, in order, so that a
+# theme of yours shadows one that shipped:
+#
+#   ~/.config/lasciate/themes/     yours
+#   ~/.local/share/lasciate/themes/   installed by `make install`
+#   <next to this script>/../themes/  the source tree, so it runs uninstalled
+#
+# A theme is code, and nothing checks who may write it. Both directories above
+# sit inside ones only you can traverse, which is where the trust comes from --
+# keep them that way.
+theme_path() {
+    case $1 in
+        */*) printf '%s\n' "$1"; return 0 ;;
+    esac
+    for _dir in \
+        "${XDG_CONFIG_HOME:-${HOME:-}/.config}/lasciate/themes" \
+        "${XDG_DATA_HOME:-${HOME:-}/.local/share}/lasciate/themes" \
+        "$(dirname -- "$0")/../share/lasciate/themes" \
+        "$(dirname -- "$0")/../themes"
+    do
+        if [ -r "$_dir/$1" ]; then
+            printf '%s\n' "$_dir/$1"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Sourced with -e and -u off: a theme deciding whether the screen locks is not
+# a trade anybody would make on purpose, and the ways a shell fragment can
+# decide it are not ones you would spot while writing one.
+load_theme() {
+    _f=$(theme_path "$1") || {
+        alarm "no theme called '$1' -- locking without it"
+        return 1
+    }
+    [ -f "$_f" ] && [ -r "$_f" ] || {
+        alarm "theme '$1' at $_f cannot be read -- locking without it"
+        return 1
+    }
+    set +eu
+    . "$_f"
+    set -eu
+    return 0
+}
+
+# The look. LASCIATE_THEME names a file in the themes directories, or is a path
+# to one; unset means inferno. A name with nothing behind it is reported by
+# load_theme and inferno is read instead, so a typo costs the look and not the
+# lock.
+#
+# A theme file is plain assignments, so it overwrites what the environment
+# brought: a variable from the environment survives only where the theme does
+# not name it.
+load_theme "${LASCIATE_THEME:-inferno}" || load_theme inferno || true
+
+# Whatever LD_PRELOAD is at this point -- from the session, or exported by the
+# theme a moment ago -- comes out of the environment and waits in an ordinary
+# variable until the last line. Left in place it applies to every command this
+# script runs on its own account, and an object that cannot load takes `id`,
+# `rm` and finally the exec down with it, one symbol lookup error at a time,
+# with the screen still up.
+inherited_preload="${LD_PRELOAD:-}"
+unset LD_PRELOAD 2>/dev/null || true
+
+# -e stays off from here to the exec. Everything below is an assignment or a
+# test whose failure costs at most the wrong colours, and every one of them can
+# fail in a way nobody would predict from reading it: `export VAR=x` is
+# non-zero if the theme made VAR readonly, `unset` likewise. Under -e each of
+# those was a screen that never locked. -u stays on -- every expansion below is
+# already written to survive it, and it catches a genuine typo at the one point
+# where a typo would be silent.
+set +e
+
+# Checked here rather than left to the exec at the bottom. If xsecurelock is
+# missing the exec fails, this script exits, and the screen stays up -- with
+# nothing said anywhere a person is looking at lock time. Say it everywhere
+# there is to say it, and keep the non-zero exit so whatever called this (xss-
+# lock, systemd) records the failure too.
+if ! command -v xsecurelock >/dev/null 2>&1; then
+    alarm "xsecurelock not found in PATH -- THE SCREEN IS NOT LOCKED" graphical
+    # The one early exit that is meant. Clearing the trap keeps the failsafe
+    # from chasing an xsecurelock that has already been established as absent.
+    trap - EXIT INT TERM HUP
+    exit 127
+fi
+
+# The shim. Looked for next to this script first, so the install is
+# relocatable and `make PREFIX=... install` works without patching anything;
+# then in the XDG location for the default install.
+#
+# Guarded rather than assumed: without it you get an ordinary xsecurelock
+# rather than a lock screen that refuses to start.
+if [ -z "${LASCIATE_SHIM:-}" ]; then
+    self_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+    for candidate in \
+        "$self_dir/../share/lasciate/shim.so" \
+        "${XDG_DATA_HOME:-${HOME:-}/.local/share}/lasciate/shim.so"
+    do
+        [ -r "$candidate" ] && { LASCIATE_SHIM=$candidate; break; }
+    done
+fi
+
+# What the locker will be given as LD_PRELOAD. Assigned unconditionally, so
+# that a `preload=/tmp/mine.so` in a theme cannot sit here untouched and be
+# exported at the bottom as though this script had put it there.
+#
+# Nothing here is vetted for ownership or mode. Such a check would only guard a
+# `LASCIATE_SHIM` that a theme named, and a theme is already code; the advice
+# belongs in the README, where it cannot fail at lock time.
+#
+# A path with a space or a colon in it cannot be a component of LD_PRELOAD --
+# the loader splits on both -- so one would silently become two paths that do
+# not exist. That is worth a word, because the failure is otherwise invisible:
+# no error, no theme, no reason.
+preload="${inherited_preload:+$inherited_preload:}"
+# `-f` and not just `-r`: a named pipe is readable, and preloading one blocks
+# the loader -- in the probe below, and then in the locker -- for as long as
+# nobody opens the other end, which is a lock screen that never arrives. It is
+# the one thing the deleted vetting was checking that had nothing to do with
+# ownership, and the only one worth keeping.
+if [ -n "${LASCIATE_SHIM:-}" ] && [ -f "$LASCIATE_SHIM" ] && [ -r "$LASCIATE_SHIM" ]; then
+    case $LASCIATE_SHIM in
+        *[!-a-zA-Z0-9_./+@]*)
+            alarm "$LASCIATE_SHIM cannot be an LD_PRELOAD component -- the loader splits on spaces and colons; locking with a plain xsecurelock"
+            ;;
+        *)
+            preload="$preload$LASCIATE_SHIM"
+            ;;
+    esac
+fi
+preload="${preload%:}"
+
+# Whether the whole of it loads. `[ -r ]` was the entire test once, and it
+# passes a file that ld.so then refuses -- at which point the failure is not
+# the graceful one this was written to expect. A missing or malformed object is
+# ignored with a warning and the process runs on, but one built against a newer
+# glibc than this machine has, or carrying any symbol that will not resolve,
+# aborts every process that inherits the variable. The wrapper has exec'd by
+# then, so the screen simply never locks, in silence. Copying an install
+# between distributions is the ordinary way to arrive there.
+#
+# The string that gets tested is the string that gets exported, not the shim on
+# its own: a bad component inherited from the environment kills the locker just
+# as dead, and testing only the part this script added would miss it.
+#
+# What it cannot see is a symbol that binds lazily -- `/bin/true` loads the
+# object and calls nothing in it, so a hook body referring to something
+# unresolvable passes here and fails at the first keystroke instead. `make`
+# links the shim with `-z now` so that shipped builds resolve everything up
+# front and this probe is conclusive for them; a hand-built `cc -shared` is not
+# covered, and there is no way to cover it short of running auth_x11 itself.
+if [ -n "$preload" ] && [ -x /bin/true ] && ! LD_PRELOAD="$preload" /bin/true 2>/dev/null; then
+    alarm "LD_PRELOAD=$preload will not load (built for another system?) -- locking with a plain xsecurelock"
+    preload=
+fi
+
+# A failed attempt replaces the inscription for the rest of the lock and counts
+# itself, so changed text on your return means somebody tried while you were
+# away. The count has to be cleared here rather than by the shim: this runs
+# once per lock, whereas auth_x11 is spawned per attempt and has no way to tell
+# a new lock session from another go at the same one.
+rm -f "${XDG_RUNTIME_DIR:-/tmp}/lasciate-fails" "/tmp/lasciate-fails-$(id -u)" 2>/dev/null || true
+
+# A theme is sourced, so these are shell variables; the shim
+# reads the environment. None has a default here: the look lives in themes/,
+# and what is left unset the shim answers for itself.
+# A variable added to the shim belongs in this list, or it is silently
+# ignored; and in the theme block's unset list above as well, unless it is one
+# of the two a theme deliberately leaves alone.
+for _v in LASCIATE_PROMPT LASCIATE_PROCESSING \
+          LASCIATE_BASES LASCIATE_MARKS LASCIATE_GLYPHS LASCIATE_NO_GLYPHS \
+          LASCIATE_PROMPT_FAILED LASCIATE_PROCESSING_SRC
+do
+    # `+set` not `:+set`, so empty values pass. `if` rather than `&&`: a false
+    # test on the last pass of a loop becomes the loop's status, and under -e
+    # that is a screen that never locks.
+    if eval "[ -n \"\${$_v+set}\" ]"; then
+        export "$_v" 2>/dev/null || true
+    fi
+done
+unset _v 2>/dev/null || true
+
+# The hostname must be off: auth_x11 draws <hostname> " - " <prompt>, and that
+# separator is compiled in. With nothing to join, the prompt stands alone.
+export XSECURELOCK_SHOW_HOSTNAME="${XSECURELOCK_SHOW_HOSTNAME:-0}"
+export XSECURELOCK_SHOW_USERNAME="${XSECURELOCK_SHOW_USERNAME:-0}"
+export XSECURELOCK_SHOW_DATETIME="${XSECURELOCK_SHOW_DATETIME:-0}"
+export XSECURELOCK_SHOW_KEYBOARD_LAYOUT="${XSECURELOCK_SHOW_KEYBOARD_LAYOUT:-0}"
+export XSECURELOCK_SHOW_LOCKS_AND_LATCHES="${XSECURELOCK_SHOW_LOCKS_AND_LATCHES:-0}"
+
+export XSECURELOCK_SAVER="${XSECURELOCK_SAVER:-saver_blank}"
+export XSECURELOCK_BLANK_TIMEOUT="${XSECURELOCK_BLANK_TIMEOUT:-5}"
+export XSECURELOCK_BLANK_DPMS_STATE="${XSECURELOCK_BLANK_DPMS_STATE:-off}"
+export XSECURELOCK_SINGLE_AUTH_WINDOW="${XSECURELOCK_SINGLE_AUTH_WINDOW:-1}"
+
+# The font, the colours and the feedback mode belong to the theme, so they are
+# exported if a theme (or you) set them and left alone otherwise -- xsecurelock
+# has defaults of its own and they are a lock screen too.
+for _v in XSECURELOCK_FONT XSECURELOCK_PASSWORD_PROMPT \
+          XSECURELOCK_BACKGROUND_COLOR XSECURELOCK_AUTH_BACKGROUND_COLOR \
+          XSECURELOCK_AUTH_FOREGROUND_COLOR XSECURELOCK_AUTH_WARNING_COLOR
+do
+    if eval "[ -n \"\${$_v+set}\" ]"; then
+        export "$_v" 2>/dev/null || true
+    fi
+done
+unset _v 2>/dev/null || true
+
+# Last of all, so nothing this script runs on its own account inherits it.
+if [ -n "${preload:-}" ]; then
+    export LD_PRELOAD="$preload"
+fi
+
+# Clearing the trap is what separates reaching this line from falling off the
+# script somewhere above it. The exec replaces the process, so nothing after it
+# runs; if it fails, the shell's own error is the report and the failsafe would
+# only be trying the same thing twice.
+trap - EXIT INT TERM HUP
+exec xsecurelock "$@"
